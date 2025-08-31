@@ -1,8 +1,11 @@
-from sqlalchemy import create_engine, Column, Integer, String, BigInteger, Boolean, DateTime, JSON
+from sqlalchemy import create_engine, Column, Integer, String, BigInteger, Boolean, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import uuid
+
+# Импортируем из config.py
+from config import DATABASE_URL
 
 Base = declarative_base()
 
@@ -48,4 +51,5 @@ def init_db():
     Base.metadata.create_all(engine)
     return sessionmaker(bind=engine)
 
+# Инициализация сессии
 SessionLocal = init_db()
