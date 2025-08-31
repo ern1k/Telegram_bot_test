@@ -15,6 +15,11 @@ logger = logging.getLogger(__name__)
 
 async def main():
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    
+    # Удаляем вебхук перед запуском поллинга
+    await bot.delete_webhook(drop_pending_updates=True)
+    print("Вебхук удален, запускаем поллинг...")
+    
     dp = Dispatcher()
     
     dp.include_router(start_router)
