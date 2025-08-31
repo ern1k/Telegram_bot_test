@@ -3,7 +3,7 @@ from aiogram.types import Message
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 
-from database import SessionLocal, User
+from database import SessionLocal, User  # Теперь импортируем напрямую из database
 from keyboards.main import main_menu
 
 router = Router()
@@ -12,7 +12,8 @@ router = Router()
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     
-    with SessionLocal() as session:
+    session = SessionLocal()
+    try:
         user = session.query(User).filter(User.user_id == message.from_user.id).first()
         if not user:
             user = User(
@@ -23,6 +24,8 @@ async def cmd_start(message: Message, state: FSMContext):
             )
             session.add(user)
             session.commit()
+    finally:
+        session.close()
     
     await message.answer(
         "Добро пожаловать! Выберите действие:",
