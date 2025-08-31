@@ -7,6 +7,10 @@ from config import CRYPTOBOT_API_TOKEN
 CRYPTOBOT_API_URL = "https://pay.crypt.bot/api/"
 
 async def create_cryptobot_invoice(callback, product_id, product):
+    if not CRYPTOBOT_API_TOKEN or CRYPTOBOT_API_TOKEN == "your_cryptobot_token":
+        await callback.message.answer("❌ Сервис криптоплатежей временно недоступен")
+        return
+    
     payment_id = str(uuid.uuid4())
     
     headers = {'Crypto-Pay-API-Token': CRYPTOBOT_API_TOKEN}
@@ -19,7 +23,7 @@ async def create_cryptobot_invoice(callback, product_id, product):
     }
     
     try:
-        response = requests.post(f"{CRYPTOBOT_API_URL}createInvoice", headers=headers, json=payload)
+        response = requests.post(f"{CRYPTOBOT_API_URL}createInvoice", headers=headers, json=payload, timeout=30)
         data = response.json()
         
         if data.get('ok'):
@@ -29,7 +33,7 @@ async def create_cryptobot_invoice(callback, product_id, product):
                 payment = Payment(
                     payment_id=payment_id,
                     user_id=callback.from_user.id,
-                    amount=product['price_usd'] * 100,
+                    amount=int(float(product['price_usd']) * 100),
                     currency='USD',
                     product=product_id,
                     status='pending',
@@ -44,12 +48,21 @@ async def create_cryptobot_invoice(callback, product_id, product):
             ])
             
             await callback.message.answer(
-                f"Счет создан. Сумма: {invoice['amount']} USDT\nСсылка: {invoice['pay_url']}",
-                reply_markup=keyboard
+                f"📋 <b>Счет для оплаты создан</b>\n\n"
+                f"💰 Сумма: {invoice['amount']} USDT\n"
+                f"⏰ Срок действия: 15 минут\n"
+                f"🔗 Ссылка для оплаты ниже\n\n"
+                f"После оплаты нажмите 'Проверить статус'",
+                reply_markup=keyboard,
+                parse_mode="HTML"
             )
             
+        else:
+            error_msg = data.get('error', 'Unknown error')
+            await callback.message.answer("❌ Ошибка создания счета в CryptoBot")
+            
     except Exception as e:
-        await callback.message.answer("Ошибка создания счета")
+        await callback.message.answer("❌ Ошибка при создании платежа. Попробуйте позже.")
 
 async def check_crypto_payment(callback):
     payment_id = callback.data.replace("check_crypto_", "")
@@ -57,22 +70,30 @@ async def check_crypto_payment(callback):
     with SessionLocal() as session:
         payment = session.query(Payment).filter(Payment.payment_id == payment_id).first()
         
-        if payment and payment.status == 'completed':
-            await callback.answer("Оплата уже подтверждена")
+        if not payment:
+            await callback.answer("❌ Платеж не найден", show_alert=True)
+            return
+        
+        if payment.status == 'completed':
+            await callback.answer("✅ Оплата уже подтверждена", show_alert=True)
             return
         
         headers = {'Crypto-Pay-API-Token': CRYPTOBOT_API_TOKEN}
-        response = requests.get(f"{CRYPTOBOT_API_URL}getInvoices?invoice_ids={payment_id}", headers=headers)
-        data = response.json()
-        
-        if data.get('ok') and data['result']['items']:
-            invoice = data['result']['items'][0]
+        try:
+            response = requests.get(f"{CRYPTOBOT_API_URL}getInvoices?invoice_ids={payment_id}", headers=headers, timeout=30)
+            data = response.json()
             
-            if invoice['status'] == 'paid':
-                payment.status = 'completed'
-                session.commit()
-                await callback.message.answer("✅ Оплата подтверждена! Товар активирован.")
+            if data.get('ok') and data['result'].get('items'):
+                invoice = data['result']['items'][0]
+                
+                if invoice['status'] == 'paid':
+                    payment.status = 'completed'
+                    session.commit()
+                    await callback.message.edit_text("✅ Оплата подтверждена! Товар активирован.")
+                else:
+                    await callback.answer("⏳ Оплата еще не получена", show_alert=True)
             else:
-                await callback.answer("Оплата еще не получена")
-        else:
-            await callback.answer("Ошибка проверки статуса")
+                await callback.answer("❌ Ошибка проверки статуса", show_alert=True)
+                
+        except Exception as e:
+            await callback.answer("❌ Ошибка при проверке статуса", show_alert=True)
